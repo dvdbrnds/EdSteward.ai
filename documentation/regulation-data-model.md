@@ -1,369 +1,327 @@
 # Regulation Data Model
 
-## Overview
+## 1. Overview
 
-The regulation data model defines the structure for storing and managing regulatory data within the EdSteward.ai platform. The model supports comprehensive versioning, change tracking, and auditing of all regulatory content.
+This document defines the data model for storing and managing regulations within the Compliance Tracker MCP system. The model is designed to support versioning, multi-tenancy, audit logging, and the generation of attestation certificates.
 
-## Core Entities
+## 2. Core Entities
 
-### 1. Regulation
+### 2.1 Tenant
 
-The primary entity representing a distinct regulation.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| regulation_id | UUID | Unique identifier for the regulation |
-| title | String | Official title of the regulation |
-| citation | String | Official citation format |
-| jurisdiction | String | Geographic/administrative scope (Federal, State, Local) |
-| authority | String | Issuing authority or agency |
-| category | String | Topical categorization |
-| effective_date | Date | When the regulation came into effect |
-| is_active | Boolean | Whether the regulation is currently in force |
-| tags | Array[String] | Searchable keywords |
-| created_at | Timestamp | When the record was created |
-| updated_at | Timestamp | When the record was last updated |
-| created_by | UUID | User who created the record |
-| metadata | JSON | Additional regulation-specific metadata |
-
-#### SQL Definition
-
-```sql
-CREATE TABLE regulations (
-    regulation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
-    citation VARCHAR(255) NOT NULL,
-    jurisdiction VARCHAR(100) NOT NULL,
-    authority VARCHAR(255) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    effective_date DATE NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    tags TEXT[] DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by UUID NOT NULL REFERENCES users(user_id),
-    metadata JSONB DEFAULT '{}'
-);
-
-CREATE INDEX idx_regulations_category ON regulations(category);
-CREATE INDEX idx_regulations_jurisdiction ON regulations(jurisdiction);
-CREATE INDEX idx_regulations_tags ON regulations USING GIN(tags);
-CREATE INDEX idx_regulations_metadata ON regulations USING GIN(metadata);
+```
+Table: tenants
 ```
 
-### 2. Regulation Version
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| name | String | Institution name |
+| code | String | Unique institution code |
+| created_at | Timestamp | Creation timestamp |
+| updated_at | Timestamp | Last update timestamp |
+| status | Enum | ACTIVE, INACTIVE, SUSPENDED |
+| domain | String | Custom domain for white-labeling |
+| settings | JSONB | Tenant-specific settings |
+| parent_tenant_id | UUID | For organizational hierarchies (optional) |
+| meta_data | JSONB | Additional tenant metadata |
 
-Represents a specific version of a regulation, tracking changes over time.
+### 2.2 Regulation Category
 
-#### Attributes
+```
+Table: regulation_categories
+```
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| version_id | UUID | Unique identifier for the version |
-| regulation_id | UUID | Reference to the parent regulation |
-| version_number | String | Semantic version number (MAJOR.MINOR.PATCH) |
-| content | Text | Full text content of the regulation version |
-| content_format | String | Format of the content (e.g., markdown, html, plain) |
-| content_hash | String | Cryptographic hash of the content for verification |
-| change_summary | Text | Human-readable summary of changes from previous version |
-| change_type | String | Type of change (major, minor, patch) |
-| effective_date | Date | When this version became effective |
-| superseded_date | Date | When this version was superseded (null if current) |
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| tenant_id | UUID | Foreign key to tenants table |
+| name | String | Category name |
+| description | String | Category description |
+| parent_id | UUID | Parent category (optional) |
+| validation_level | Integer | Default validation level (1-3) |
+| created_at | Timestamp | Creation timestamp |
+| updated_at | Timestamp | Last update timestamp |
+| is_system | Boolean | Whether this is a system-defined category |
+
+### 2.3 Regulation
+
+```
+Table: regulations
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| tenant_id | UUID | Foreign key to tenants table |
+| category_id | UUID | Foreign key to regulation_categories |
+| code | String | Unique regulation identifier |
+| title | String | Regulation title |
+| description | Text | Regulation description |
+| source_url | String | Link to original regulation source |
+| source_authority | String | Issuing authority |
+| applicable_from | Date | Start date of applicability |
+| applicable_until | Date | End date of applicability (optional) |
+| criticality | Enum | HIGH, MEDIUM, LOW |
+| validation_level | Integer | Required validation level (1-3) |
+| review_frequency | Interval | Required review frequency |
+| last_review_date | Timestamp | Last review timestamp |
+| next_review_date | Timestamp | Next scheduled review |
+| metadata | JSONB | Additional regulation metadata |
+| tags | String[] | Searchable tags |
+| is_active | Boolean | Whether regulation is currently active |
+| created_at | Timestamp | Creation timestamp |
+| updated_at | Timestamp | Last update timestamp |
+| created_by | UUID | User who created the regulation |
+| updated_by | UUID | User who last updated the regulation |
+| external_system_refs | JSONB | References to external systems |
+| self_compliance_relevance | JSONB | Relevance for system self-compliance |
+
+### 2.4 Regulation Version
+
+```
+Table: regulation_versions
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| regulation_id | UUID | Foreign key to regulations table |
+| tenant_id | UUID | Foreign key to tenants table |
+| version | String | Semantic version (MAJOR.MINOR.PATCH) |
+| content | Text | Full regulation text content |
+| structured_content | JSONB | Structured regulation data |
+| change_summary | Text | Human-readable change description |
+| change_type | Enum | MAJOR, MINOR, PATCH, EDITORIAL |
+| diff_from_previous | JSONB | Detailed diff from previous version |
+| published_at | Timestamp | Official publication timestamp |
+| effective_from | Date | When version becomes effective |
+| effective_until | Date | When version expires (optional) |
+| status | Enum | DRAFT, PUBLISHED, SUPERSEDED, DEPRECATED |
 | is_current | Boolean | Whether this is the current version |
-| published_by | UUID | User who published this version |
-| published_at | Timestamp | When this version was published |
-| approval_status | String | Workflow status (draft, approved, published) |
-| approved_by | UUID | User who approved this version |
-| approved_at | Timestamp | When this version was approved |
-| source_url | String | Link to authoritative source document |
-| change_rationale | Text | Reason for the changes in this version |
+| is_baseline | Boolean | Whether this is an immutable baseline |
+| created_at | Timestamp | Creation timestamp |
+| updated_at | Timestamp | Last update timestamp |
+| created_by | UUID | User who created the version |
+| updated_by | UUID | User who last updated the version |
+| hash | String | Content hash for integrity verification |
+| validation_artifacts | JSONB | Supporting validation artifacts |
 
-#### SQL Definition
-
-```sql
-CREATE TABLE regulation_versions (
-    version_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    regulation_id UUID NOT NULL REFERENCES regulations(regulation_id),
-    version_number VARCHAR(20) NOT NULL,
-    content TEXT NOT NULL,
-    content_format VARCHAR(50) DEFAULT 'markdown',
-    content_hash VARCHAR(128) NOT NULL,
-    change_summary TEXT,
-    change_type VARCHAR(20) CHECK (change_type IN ('major', 'minor', 'patch')),
-    effective_date DATE NOT NULL,
-    superseded_date DATE,
-    is_current BOOLEAN DEFAULT FALSE,
-    published_by UUID REFERENCES users(user_id),
-    published_at TIMESTAMP WITH TIME ZONE,
-    approval_status VARCHAR(20) DEFAULT 'draft' CHECK (approval_status IN ('draft', 'pending', 'approved', 'published', 'rejected')),
-    approved_by UUID REFERENCES users(user_id),
-    approved_at TIMESTAMP WITH TIME ZONE,
-    source_url VARCHAR(512),
-    change_rationale TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX idx_regulation_versions_regulation_version ON regulation_versions(regulation_id, version_number);
-CREATE INDEX idx_regulation_versions_is_current ON regulation_versions(regulation_id, is_current);
-CREATE INDEX idx_regulation_versions_approval_status ON regulation_versions(approval_status);
-```
-
-### 3. Regulation Structure
-
-Represents the structured components of a regulation for more precise validation.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| structure_id | UUID | Unique identifier for the structure element |
-| version_id | UUID | Reference to the regulation version |
-| section_type | String | Type of section (chapter, article, paragraph, etc.) |
-| section_number | String | Hierarchical identifier (e.g., "1.2.3") |
-| parent_id | UUID | Reference to parent structure (for hierarchical organization) |
-| title | String | Section title or heading |
-| content | Text | Content of this specific section |
-| content_hash | String | Hash of the section content |
-| sequence | Integer | Order within parent section |
-| metadata | JSON | Additional section-specific metadata |
-
-#### SQL Definition
-
-```sql
-CREATE TABLE regulation_structures (
-    structure_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    version_id UUID NOT NULL REFERENCES regulation_versions(version_id),
-    section_type VARCHAR(50) NOT NULL,
-    section_number VARCHAR(100) NOT NULL,
-    parent_id UUID REFERENCES regulation_structures(structure_id),
-    title VARCHAR(512),
-    content TEXT NOT NULL,
-    content_hash VARCHAR(128) NOT NULL,
-    sequence INTEGER NOT NULL,
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_regulation_structures_version ON regulation_structures(version_id);
-CREATE INDEX idx_regulation_structures_parent ON regulation_structures(parent_id);
-CREATE INDEX idx_regulation_structures_section_number ON regulation_structures(version_id, section_number);
-```
-
-### 4. Validation Results
-
-Stores the results of validation operations performed by the MCP system.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| validation_id | UUID | Unique identifier for the validation result |
-| regulation_id | UUID | Reference to the validated regulation |
-| frontend_version | String | Version as presented by the frontend |
-| authority_version | String | Authoritative version from the backend |
-| validation_level | Integer | Level of validation performed (1-3) |
-| is_valid | Boolean | Whether validation passed |
-| certainty_level | Integer | Confidence level of the validation (1-5) |
-| evidence | JSON | Supporting evidence for the validation result |
-| validator_id | UUID | Reference to the MCP that performed validation |
-| validation_timestamp | Timestamp | When validation was performed |
-| request_id | UUID | Reference to the original validation request |
-| client_id | String | Identifier of the requesting client |
-| certificate_id | UUID | Reference to attestation certificate (if generated) |
-| notes | Text | Additional validation notes |
-
-#### SQL Definition
-
-```sql
-CREATE TABLE validation_results (
-    validation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    regulation_id UUID NOT NULL REFERENCES regulations(regulation_id),
-    frontend_version VARCHAR(20) NOT NULL,
-    authority_version VARCHAR(20) NOT NULL,
-    validation_level INTEGER NOT NULL CHECK (validation_level BETWEEN 1 AND 3),
-    is_valid BOOLEAN NOT NULL,
-    certainty_level INTEGER NOT NULL CHECK (certainty_level BETWEEN 1 AND 5),
-    evidence JSONB NOT NULL DEFAULT '{}',
-    validator_id UUID NOT NULL,
-    validation_timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    request_id UUID NOT NULL,
-    client_id VARCHAR(255) NOT NULL,
-    certificate_id UUID,
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_validation_results_regulation ON validation_results(regulation_id);
-CREATE INDEX idx_validation_results_request ON validation_results(request_id);
-CREATE INDEX idx_validation_results_certificate ON validation_results(certificate_id);
-CREATE INDEX idx_validation_results_timestamp ON validation_results(validation_timestamp);
-```
-
-### 5. Attestation Certificates
-
-Represents official validation attestations generated by the system.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| certificate_id | UUID | Unique identifier for the certificate |
-| validation_id | UUID | Reference to the validation result |
-| regulation_id | UUID | Reference to the validated regulation |
-| regulation_version | String | Version of the regulation attested |
-| issued_at | Timestamp | When the certificate was issued |
-| expires_at | Timestamp | When the certificate expires |
-| issuer | String | Identifier of the issuing authority |
-| cryptographic_signature | Text | Digital signature of certificate contents |
-| revocation_status | String | Current status (active, expired, revoked) |
-| revocation_reason | Text | Reason for revocation (if applicable) |
-| revoked_at | Timestamp | When certificate was revoked (if applicable) |
-| revoked_by | UUID | User who revoked the certificate (if applicable) |
-| metadata | JSON | Additional certificate-specific metadata |
-
-#### SQL Definition
-
-```sql
-CREATE TABLE attestation_certificates (
-    certificate_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    validation_id UUID NOT NULL REFERENCES validation_results(validation_id),
-    regulation_id UUID NOT NULL REFERENCES regulations(regulation_id),
-    regulation_version VARCHAR(20) NOT NULL,
-    issued_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    issuer VARCHAR(255) NOT NULL,
-    cryptographic_signature TEXT NOT NULL,
-    revocation_status VARCHAR(20) DEFAULT 'active' CHECK (revocation_status IN ('active', 'expired', 'revoked')),
-    revocation_reason TEXT,
-    revoked_at TIMESTAMP WITH TIME ZONE,
-    revoked_by UUID REFERENCES users(user_id),
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_attestation_certificates_validation ON attestation_certificates(validation_id);
-CREATE INDEX idx_attestation_certificates_regulation ON attestation_certificates(regulation_id, regulation_version);
-CREATE INDEX idx_attestation_certificates_status ON attestation_certificates(revocation_status);
-CREATE INDEX idx_attestation_certificates_expiry ON attestation_certificates(expires_at);
-```
-
-### 6. Version Acceptance
-
-Tracks frontend acceptance of regulation version changes.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| acceptance_id | UUID | Unique identifier for the acceptance record |
-| regulation_id | UUID | Reference to the regulation |
-| from_version | String | Previous version number |
-| to_version | String | New version number |
-| accepted_by | UUID | User who accepted the change |
-| accepted_at | Timestamp | When the change was accepted |
-| client_id | String | Identifier of the client system |
-| acceptance_notes | Text | Notes provided during acceptance |
-| acceptance_evidence | JSON | Supporting evidence for acceptance |
-
-#### SQL Definition
-
-```sql
-CREATE TABLE version_acceptances (
-    acceptance_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    regulation_id UUID NOT NULL REFERENCES regulations(regulation_id),
-    from_version VARCHAR(20) NOT NULL,
-    to_version VARCHAR(20) NOT NULL,
-    accepted_by UUID NOT NULL REFERENCES users(user_id),
-    accepted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    client_id VARCHAR(255) NOT NULL,
-    acceptance_notes TEXT,
-    acceptance_evidence JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_version_acceptances_regulation ON version_acceptances(regulation_id);
-CREATE INDEX idx_version_acceptances_user ON version_acceptances(accepted_by);
-CREATE INDEX idx_version_acceptances_versions ON version_acceptances(regulation_id, from_version, to_version);
-```
-
-### 7. Audit Logs
-
-Comprehensive tracking of all system activities for compliance and security.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| audit_id | UUID | Unique identifier for the audit record |
-| event_type | String | Type of event being logged |
-| entity_type | String | Type of entity affected (regulation, version, etc.) |
-| entity_id | UUID | Identifier of the affected entity |
-| user_id | UUID | User who performed the action |
-| client_id | String | Client system identifier |
-| ip_address | String | Source IP address |
-| action | String | Action performed (create, update, delete, etc.) |
-| timestamp | Timestamp | When the event occurred |
-| previous_state | JSON | Entity state before the action |
-| new_state | JSON | Entity state after the action |
-| metadata | JSON | Additional event-specific metadata |
-
-#### SQL Definition
-
-```sql
-CREATE TABLE audit_logs (
-    audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_type VARCHAR(100) NOT NULL,
-    entity_type VARCHAR(100) NOT NULL,
-    entity_id UUID NOT NULL,
-    user_id UUID,
-    client_id VARCHAR(255),
-    ip_address VARCHAR(45),
-    action VARCHAR(50) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    previous_state JSONB,
-    new_state JSONB,
-    metadata JSONB DEFAULT '{}'
-);
-
-CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
-CREATE INDEX idx_audit_logs_user ON audit_logs(user_id);
-CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp);
-CREATE INDEX idx_audit_logs_event_action ON audit_logs(event_type, action);
-```
-
-## Entity Relationships
-
-The following diagram illustrates the key relationships between entities in the data model:
+### 2.5 Regulation Acceptance
 
 ```
-Regulation
-    ├── Regulation Version (1-to-many)
-    │       ├── Regulation Structure (1-to-many)
-    │       └── Validation Result (1-to-many)
-    │              └── Attestation Certificate (1-to-1)
-    └── Version Acceptance (1-to-many)
-
-All Entities --> Audit Logs (1-to-many)
+Table: regulation_acceptances
 ```
 
-## Versioning Strategy
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| regulation_version_id | UUID | Foreign key to regulation_versions |
+| tenant_id | UUID | Foreign key to tenants table |
+| accepted_at | Timestamp | Acceptance timestamp |
+| accepted_by | UUID | User who accepted the version |
+| acceptance_notes | Text | Notes regarding the acceptance |
+| frontend_version | String | Frontend version that accepted |
+| acceptor_role | String | Role of the accepting user |
+| is_overridden | Boolean | Whether acceptance was overridden |
+| override_reason | Text | Reason for override (if applicable) |
+| created_at | Timestamp | Creation timestamp |
+| metadata | JSONB | Additional acceptance metadata |
 
-Regulation versions follow semantic versioning principles:
+### 2.6 Validation Result
 
-1. MAJOR version changes: Significant content changes that alter meaning or compliance requirements
-2. MINOR version changes: Additions that don't change existing meaning
-3. PATCH version changes: Corrections, clarifications, or formatting changes
+```
+Table: validation_results
+```
 
-## Data Security Considerations
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| regulation_version_id | UUID | Foreign key to regulation_versions |
+| tenant_id | UUID | Foreign key to tenants table |
+| request_id | UUID | Original validation request ID |
+| validation_level | Integer | Applied validation level (1-3) |
+| status | Enum | VALID, INVALID, PARTIAL, ERROR |
+| certainty_level | Integer | Confidence level (1-5) |
+| valid_sections | JSONB | Sections that passed validation |
+| invalid_sections | JSONB | Sections that failed validation |
+| warnings | JSONB | Non-critical validation concerns |
+| suggestions | JSONB | Improvement suggestions |
+| validation_timestamp | Timestamp | When validation occurred |
+| validator_id | String | Identifier for validator component |
+| execution_time_ms | Integer | Processing time in milliseconds |
+| attestation_id | UUID | Related attestation (if generated) |
+| created_at | Timestamp | Creation timestamp |
+| metadata | JSONB | Additional validation metadata |
+| analytics_data | JSONB | Data collected for future analysis |
 
-1. All sensitive regulation data is encrypted at rest
-2. Cryptographic checksums verify content integrity
-3. Comprehensive audit logging captures all changes
-4. QLDB implementation provides immutable audit trail
-5. Digital signatures on attestation certificates
-6. Row-level security enforces tenant isolation in multi-tenant deployments
+### 2.7 Attestation Certificate
+
+```
+Table: attestation_certificates
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| validation_result_id | UUID | Foreign key to validation_results |
+| tenant_id | UUID | Foreign key to tenants table |
+| certificate_content | Text | Full certificate content |
+| signature | Text | Cryptographic signature |
+| issued_at | Timestamp | Issuance timestamp |
+| valid_until | Timestamp | Expiration timestamp |
+| status | Enum | ACTIVE, REVOKED, EXPIRED |
+| revocation_reason | Text | Reason if revoked |
+| revocation_timestamp | Timestamp | When revoked (if applicable) |
+| issuer | String | Certificate issuing authority |
+| fingerprint | String | Certificate fingerprint |
+| created_at | Timestamp | Creation timestamp |
+| metadata | JSONB | Additional certificate metadata |
+
+### 2.8 Audit Log
+
+```
+Table: audit_logs
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| tenant_id | UUID | Foreign key to tenants table |
+| event_type | String | Type of audit event |
+| event_category | String | Category of event |
+| entity_type | String | Type of entity being audited |
+| entity_id | UUID | ID of entity being audited |
+| user_id | UUID | User who triggered the event |
+| client_ip | String | IP address of client |
+| user_agent | String | User agent information |
+| event_timestamp | Timestamp | When the event occurred |
+| event_details | JSONB | Detailed event information |
+| created_at | Timestamp | Creation timestamp |
+| system_metadata | JSONB | Additional system metadata |
+| is_self_compliance | Boolean | Whether related to system compliance |
+
+### 2.9 Self-Compliance Record
+
+```
+Table: self_compliance_records
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| tenant_id | UUID | Foreign key to tenants table |
+| regulation_id | UUID | Foreign key to regulations table |
+| status | Enum | COMPLIANT, PARTIALLY_COMPLIANT, NON_COMPLIANT |
+| assessment_date | Timestamp | When assessment occurred |
+| assessed_by | String | Component that performed assessment |
+| compliance_details | JSONB | Detailed compliance information |
+| remediation_plan | JSONB | Plan to address non-compliance |
+| remediation_deadline | Timestamp | Deadline for remediation |
+| reassessment_date | Timestamp | Scheduled reassessment date |
+| created_at | Timestamp | Creation timestamp |
+| updated_at | Timestamp | Last update timestamp |
+
+## 3. Database Schema Design
+
+### 3.1 Schema Overview
+
+The data model is separated into at least two schemas:
+
+1. **operational_schema** - Contains runtime operational data including validation results and audit logs
+2. **regulatory_schema** - Contains the regulation definitions, versions, and attestations
+
+### 3.2 Multi-Tenant Design
+
+The system uses a discriminator column approach for multi-tenancy:
+
+- All tables contain a `tenant_id` column
+- Database roles and row-level security policies enforce tenant isolation
+- Shared tables use tenant discriminator for filtering
+- Indexes are created on tenant_id + other commonly filtered fields
+
+### 3.3 Schema Evolution
+
+- All schema changes are versioned and tracked
+- Migration scripts maintain backward compatibility
+- Schema versioning follows semantic versioning
+
+## 4. Data Lifecycle Management
+
+### 4.1 Regulation Versioning
+
+1. Regulations maintain a full version history
+2. New versions are created rather than updating existing records
+3. Version comparisons generate human-readable diffs
+4. Current version flag indicates active version
+
+### 4.2 Audit Records Retention
+
+1. Audit logs are retained according to configurable policy
+2. Immutable storage using QLDB or similar technology
+3. High-value audit events archived for extended periods
+
+### 4.3 Data Archival
+
+1. Older regulation versions archived to cold storage
+2. Archived data remains accessible for compliance purposes
+3. Archive and retrieval processes maintain data integrity
+
+## 5. Data Access Patterns
+
+### 5.1 Common Queries
+
+1. Retrieve current regulation version by code
+2. Fetch regulation history with version differences
+3. Search regulations by criteria
+4. Retrieve validation results by regulation
+
+### 5.2 Performance Considerations
+
+1. Indexing strategy for multi-tenant queries
+2. Materialized views for common reporting queries
+3. Partitioning for audit logs and validation results
+4. Caching strategy for frequently accessed regulations
+
+## 6. Data Collection for Analysis
+
+### 6.1 Analytics Schema
+
+A separate analytics schema will store anonymized data for future analysis:
+
+```
+Table: compliance_patterns
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Primary key |
+| regulation_category | String | Anonymized category |
+| validation_pattern | JSONB | Pattern of validation results |
+| occurrence_count | Integer | Number of occurrences |
+| first_observed | Timestamp | First observation timestamp |
+| last_observed | Timestamp | Last observation timestamp |
+| institution_type | String | Anonymized institution type |
+| metadata | JSONB | Additional anonymized metadata |
+
+### 6.2 Data Privacy
+
+1. All collected data is anonymized at collection time
+2. Tenant-identifying information is removed
+3. Aggregate statistics replace individual records
+4. Data collection is governed by configurable policies
+
+## 7. Access Control
+
+### 7.1 Role-Based Access Control
+
+1. System defines roles with specific data access permissions
+2. Row-level security enforces tenant isolation
+3. Column-level security protects sensitive fields
+4. Function-based access control for data operations
+
+### 7.2 Data Encryption
+
+1. Encryption at rest for all regulatory data
+2. Encryption in transit for all API communications
+3. Field-level encryption for sensitive attributes
+4. Key management aligned with security best practices
