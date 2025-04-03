@@ -1,820 +1,826 @@
-# EdSteward.ai API Contract
+# API Contract
 
-## Overview
+## 1. Overview
 
-This document defines the API contract between the EdSteward.ai backend services and client applications such as the existing Replit frontend. The API follows RESTful principles with JSON as the primary data exchange format.
+This document defines the RESTful API contract for the Compliance Tracker MCP system. The API provides endpoints for managing regulations, performing validations, tracking versions, and integrating with frontend systems including the existing Replit frontend.
 
-## Base URL
+## 2. API Versioning
 
-**Development Environment:** `https://api-dev.edsteward.ai/v1`
-**Production Environment:** `https://api.edsteward.ai/v1`
+- All API endpoints are prefixed with `/api/v1/`
+- API versions follow semantic versioning principles
+- New versions are introduced for breaking changes
+- Multiple versions may be supported simultaneously during transition periods
 
-## Authentication
+## 3. Authentication & Authorization
 
-All API requests (except public endpoints) require authentication using JSON Web Tokens (JWT).
+### 3.1 Authentication Methods
 
-### Headers
+The API supports the following authentication methods:
+
+- **Cognito JWT Tokens** - Primary authentication method
+- **API Keys** - For service-to-service communication
+- **Client Certificates** - For sensitive operations (optional)
+
+### 3.2 Authorization Model
+
+- Role-based access control (RBAC) with fine-grained permissions
+- Tenant isolation ensures data separation
+- Scoped access tokens for limiting API access
+
+### 3.3 Authentication Endpoints
+
+#### Get Token
 
 ```
-Authorization: Bearer <jwt_token>
+POST /api/v1/auth/token
 ```
 
-JWT tokens are obtained through the Cognito authentication endpoints.
-
-## Rate Limiting
-
-API requests are subject to rate limiting:
-- 100 requests per minute for authenticated users
-- 10 requests per minute for unauthenticated requests
-
-Rate limit headers are included in all responses:
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 99
-X-RateLimit-Reset: 1617304800
+Request:
+```json
+{
+  "username": "string",
+  "password": "string",
+  "tenant": "string"
+}
 ```
 
-## Versioning
+Response:
+```json
+{
+  "access_token": "string",
+  "refresh_token": "string",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
 
-The API is versioned through the URL path. The current version is `v1`.
+#### Refresh Token
 
-## Common Response Codes
+```
+POST /api/v1/auth/refresh
+```
+
+Request:
+```json
+{
+  "refresh_token": "string"
+}
+```
+
+Response:
+```json
+{
+  "access_token": "string",
+  "expires_in": 3600
+}
+```
+
+## 4. Common Patterns
+
+### 4.1 Request/Response Format
+
+All API requests and responses use JSON format with UTF-8 encoding.
+
+### 4.2 Pagination
+
+Paginated endpoints follow this pattern:
+
+Request:
+```
+GET /api/v1/resources?page=0&size=20&sort=field,direction
+```
+
+Response:
+```json
+{
+  "content": [...],
+  "page": 0,
+  "size": 20,
+  "totalElements": 100,
+  "totalPages": 5,
+  "first": true,
+  "last": false,
+  "sort": [
+    {
+      "property": "field",
+      "direction": "ASC|DESC"
+    }
+  ]
+}
+```
+
+### 4.3 Error Handling
+
+All errors follow a consistent format:
+
+```json
+{
+  "status": 400,
+  "code": "ERROR_CODE",
+  "message": "Human-readable error message",
+  "details": {
+    "field": "Specific field error"
+  },
+  "timestamp": "ISO-timestamp",
+  "path": "/api/v1/path/to/resource",
+  "traceId": "string"
+}
+```
+
+## 5. Core Endpoints
+
+### 5.1 Regulation Management
+
+#### List Regulations
+
+```
+GET /api/v1/regulations
+```
+
+Parameters:
+- `category` - Filter by category
+- `status` - Filter by status
+- `q` - Search text
+- Standard pagination parameters
+
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "uuid",
+      "code": "string",
+      "title": "string",
+      "description": "string",
+      "category": {
+        "id": "uuid",
+        "name": "string"
+      },
+      "validationLevel": 1-3,
+      "currentVersion": "string",
+      "lastUpdated": "ISO-timestamp",
+      "status": "string"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 100,
+  "totalPages": 5
+}
+```
+
+#### Get Regulation
+
+```
+GET /api/v1/regulations/{id}
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "code": "string",
+  "title": "string",
+  "description": "string",
+  "sourceUrl": "string",
+  "sourceAuthority": "string",
+  "applicableFrom": "ISO-date",
+  "applicableUntil": "ISO-date",
+  "category": {
+    "id": "uuid",
+    "name": "string"
+  },
+  "validationLevel": 1-3,
+  "currentVersion": "string",
+  "versions": [
+    {
+      "version": "string",
+      "publishedAt": "ISO-timestamp",
+      "status": "string"
+    }
+  ],
+  "metadata": {},
+  "tags": [],
+  "isActive": true,
+  "createdAt": "ISO-timestamp",
+  "updatedAt": "ISO-timestamp"
+}
+```
+
+#### Create Regulation
+
+```
+POST /api/v1/regulations
+```
+
+Request:
+```json
+{
+  "code": "string",
+  "title": "string",
+  "description": "string",
+  "sourceUrl": "string",
+  "sourceAuthority": "string",
+  "applicableFrom": "ISO-date",
+  "applicableUntil": "ISO-date",
+  "categoryId": "uuid",
+  "validationLevel": 1-3,
+  "content": "string",
+  "structuredContent": {},
+  "metadata": {},
+  "tags": []
+}
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "code": "string",
+  "version": "1.0.0",
+  "message": "Regulation created successfully"
+}
+```
+
+#### Update Regulation
+
+```
+PUT /api/v1/regulations/{id}
+```
+
+Request: Similar to create with additional version information.
+
+Response:
+```json
+{
+  "id": "uuid",
+  "code": "string",
+  "version": "string",
+  "message": "Regulation updated successfully"
+}
+```
+
+### 5.2 Regulation Versions
+
+#### List Regulation Versions
+
+```
+GET /api/v1/regulations/{id}/versions
+```
+
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "uuid",
+      "version": "string",
+      "changeSummary": "string",
+      "changeType": "MAJOR|MINOR|PATCH|EDITORIAL",
+      "publishedAt": "ISO-timestamp",
+      "effectiveFrom": "ISO-date",
+      "effectiveUntil": "ISO-date",
+      "status": "DRAFT|PUBLISHED|SUPERSEDED|DEPRECATED",
+      "isCurrent": true
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 100,
+  "totalPages": 5
+}
+```
+
+#### Get Regulation Version
+
+```
+GET /api/v1/regulations/{id}/versions/{version}
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "version": "string",
+  "content": "string",
+  "structuredContent": {},
+  "changeSummary": "string",
+  "changeType": "MAJOR|MINOR|PATCH|EDITORIAL",
+  "diffFromPrevious": {},
+  "publishedAt": "ISO-timestamp",
+  "effectiveFrom": "ISO-date",
+  "effectiveUntil": "ISO-date",
+  "status": "DRAFT|PUBLISHED|SUPERSEDED|DEPRECATED",
+  "isCurrent": true,
+  "hash": "string",
+  "validationArtifacts": {}
+}
+```
+
+#### Compare Regulation Versions
+
+```
+GET /api/v1/regulations/{id}/versions/compare?from={version1}&to={version2}
+```
+
+Response:
+```json
+{
+  "fromVersion": "string",
+  "toVersion": "string",
+  "changeType": "MAJOR|MINOR|PATCH|EDITORIAL",
+  "changeSummary": "string",
+  "differences": [
+    {
+      "type": "ADDITION|DELETION|MODIFICATION",
+      "path": "string",
+      "oldValue": "string",
+      "newValue": "string"
+    }
+  ]
+}
+```
+
+### 5.3 Validation
+
+#### Validate Content
+
+```
+POST /api/v1/validate
+```
+
+Request:
+```json
+{
+  "regulationId": "uuid",
+  "regulationVersion": "string",
+  "validationLevel": 1-3,
+  "content": {
+    "text": "string",
+    "metadata": {}
+  },
+  "options": {
+    "strictMode": true,
+    "includeDetails": true
+  }
+}
+```
+
+Response:
+```json
+{
+  "requestId": "uuid",
+  "regulationId": "uuid",
+  "regulationVersion": "string",
+  "timestamp": "ISO-timestamp",
+  "status": "VALID|INVALID|PARTIAL|ERROR",
+  "certaintyLevel": 1-5,
+  "details": {
+    "validatedSections": [],
+    "invalidSections": [],
+    "warnings": [],
+    "suggestions": []
+  },
+  "attestation": {
+    "certificateId": "uuid",
+    "validUntil": "ISO-timestamp"
+  }
+}
+```
+
+#### Get Validation Result
+
+```
+GET /api/v1/validations/{id}
+```
+
+Response: Detailed validation result object
+
+### 5.4 Attestation Certificates
+
+#### Get Attestation Certificate
+
+```
+GET /api/v1/attestations/{id}
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "validationResultId": "uuid",
+  "certificateContent": "string",
+  "issuedAt": "ISO-timestamp",
+  "validUntil": "ISO-timestamp",
+  "status": "ACTIVE|REVOKED|EXPIRED",
+  "issuer": "string",
+  "regulationInfo": {
+    "id": "uuid",
+    "code": "string",
+    "title": "string",
+    "version": "string"
+  }
+}
+```
+
+#### Verify Attestation Certificate
+
+```
+POST /api/v1/attestations/{id}/verify
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "isValid": true,
+  "verificationTimestamp": "ISO-timestamp",
+  "validationDetails": {}
+}
+```
+
+## 6. Multi-Tenant Management
+
+### 6.1 Tenant Management
+
+#### List Tenants (Admin only)
+
+```
+GET /api/v1/tenants
+```
+
+#### Get Tenant (Admin only)
+
+```
+GET /api/v1/tenants/{id}
+```
+
+#### Create Tenant (Admin only)
+
+```
+POST /api/v1/tenants
+```
+
+Request:
+```json
+{
+  "name": "string",
+  "code": "string",
+  "domain": "string",
+  "settings": {},
+  "metadata": {}
+}
+```
+
+#### Update Tenant (Admin only)
+
+```
+PUT /api/v1/tenants/{id}
+```
+
+### 6.2 Tenant Configuration
+
+#### Get Tenant Configuration
+
+```
+GET /api/v1/config
+```
+
+Response: Tenant-specific configuration
+
+#### Update Tenant Configuration
+
+```
+PUT /api/v1/config
+```
+
+Request: Tenant configuration object
+
+## 7. Self-Compliance Endpoints
+
+### 7.1 Self-Compliance Status
+
+#### Get System Compliance Status
+
+```
+GET /api/v1/self-compliance/status
+```
+
+Response:
+```json
+{
+  "overallStatus": "COMPLIANT|PARTIALLY_COMPLIANT|NON_COMPLIANT",
+  "lastAssessmentDate": "ISO-timestamp",
+  "complianceByCategory": [
+    {
+      "category": "string",
+      "status": "COMPLIANT|PARTIALLY_COMPLIANT|NON_COMPLIANT",
+      "regulationCount": 10,
+      "compliantCount": 8
+    }
+  ]
+}
+```
+
+#### Get System Compliance Details
+
+```
+GET /api/v1/self-compliance/regulations
+```
+
+Response: List of self-compliance regulation statuses
+
+### 7.2 External Validation
+
+#### Initiate External Validation
+
+```
+POST /api/v1/external-validation
+```
+
+Request:
+```json
+{
+  "validationType": "SOC2|HIPAA|GDPR|OTHER",
+  "validationRequestor": "string",
+  "validationParameters": {}
+}
+```
+
+Response: Validation initialization information
+
+## 8. Analytics and Reporting
+
+### 8.1 Compliance Analytics
+
+#### Get Compliance Statistics
+
+```
+GET /api/v1/analytics/compliance
+```
+
+Parameters:
+- `period` - Time period for analysis
+- `category` - Filter by category
+
+Response: Compliance statistics
+
+### 8.2 Audit Log Access
+
+#### Query Audit Logs
+
+```
+GET /api/v1/audit-logs
+```
+
+Parameters:
+- `eventType` - Filter by event type
+- `entityType` - Filter by entity type
+- `from` - Start date (ISO format)
+- `to` - End date (ISO format)
+- `userId` - Filter by user ID
+- Standard pagination parameters
+
+Response:
+```json
+{
+  "content": [
+    {
+      "id": "uuid",
+      "eventType": "string",
+      "eventCategory": "string",
+      "entityType": "string",
+      "entityId": "uuid",
+      "userId": "uuid",
+      "eventTimestamp": "ISO-timestamp",
+      "summary": "string",
+      "eventDetails": {}
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 100,
+  "totalPages": 5
+}
+```
+
+### 8.3 Reporting
+
+#### Generate Compliance Report
+
+```
+POST /api/v1/reports/compliance
+```
+
+Request:
+```json
+{
+  "reportType": "SUMMARY|DETAILED|ATTESTATION",
+  "periodStart": "ISO-date",
+  "periodEnd": "ISO-date",
+  "categories": ["string"],
+  "format": "PDF|EXCEL|JSON"
+}
+```
+
+Response:
+```json
+{
+  "reportId": "uuid",
+  "status": "GENERATING|READY|FAILED",
+  "downloadUrl": "string"
+}
+```
+
+#### Get Report Status
+
+```
+GET /api/v1/reports/{id}
+```
+
+Response: Report status information
+
+## 9. LVAIC Beta Testing Endpoints
+
+### 9.1 Cross-Institutional Analytics
+
+#### Get Anonymized Compliance Patterns
+
+```
+GET /api/v1/analytics/patterns
+```
+
+Parameters:
+- `category` - Filter by regulation category
+- `period` - Time period for analysis
+
+Response:
+```json
+{
+  "patterns": [
+    {
+      "pattern": "string",
+      "occurrenceCount": 25,
+      "institutionTypeDistribution": {},
+      "regulationCategories": {},
+      "validationLevels": {}
+    }
+  ]
+}
+```
+
+### 9.2 Beta Feedback Management
+
+#### Submit Beta Feedback
+
+```
+POST /api/v1/beta/feedback
+```
+
+Request:
+```json
+{
+  "feedbackType": "BUG|FEATURE_REQUEST|GENERAL",
+  "title": "string",
+  "description": "string",
+  "severity": "LOW|MEDIUM|HIGH|CRITICAL",
+  "module": "string",
+  "screenshots": ["base64 encoded"],
+  "metadata": {}
+}
+```
+
+Response: Feedback submission confirmation
+
+#### List Beta Feedback
+
+```
+GET /api/v1/beta/feedback
+```
+
+Response: List of feedback items with status
+
+## 10. Frontend Integration Endpoints
+
+### 10.1 Version Control Notification
+
+#### Get Pending Regulation Updates
+
+```
+GET /api/v1/updates/pending
+```
+
+Response:
+```json
+{
+  "pendingUpdates": [
+    {
+      "regulationId": "uuid",
+      "regulationCode": "string",
+      "regulationTitle": "string",
+      "currentVersion": "string",
+      "newVersion": "string",
+      "changeType": "MAJOR|MINOR|PATCH|EDITORIAL",
+      "changeSummary": "string",
+      "publishedAt": "ISO-timestamp"
+    }
+  ],
+  "pendingCount": 5
+}
+```
+
+#### Accept Regulation Update
+
+```
+POST /api/v1/updates/accept
+```
+
+Request:
+```json
+{
+  "regulationId": "uuid",
+  "version": "string",
+  "acceptanceNotes": "string"
+}
+```
+
+Response: Acceptance confirmation
+
+### 10.2 Frontend Configuration
+
+#### Get Frontend Configuration
+
+```
+GET /api/v1/frontend/config
+```
+
+Response:
+```json
+{
+  "apiEndpoints": {},
+  "validationLevels": {},
+  "categoryConfigurations": {},
+  "uiCustomizations": {},
+  "featureFlags": {}
+}
+```
+
+## 11. Error Codes
 
 | Code | Description |
 |------|-------------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request - Invalid parameters or payload |
-| 401 | Unauthorized - Authentication required |
-| 403 | Forbidden - Insufficient permissions |
-| 404 | Not Found - Resource does not exist |
-| 422 | Unprocessable Entity - Validation error |
-| 429 | Too Many Requests - Rate limit exceeded |
-| 500 | Internal Server Error |
+| `AUTHENTICATION_FAILED` | Authentication credentials invalid |
+| `AUTHORIZATION_FAILED` | Not authorized to perform operation |
+| `VALIDATION_FAILED` | Input validation failed |
+| `RESOURCE_NOT_FOUND` | Requested resource not found |
+| `VERSION_CONFLICT` | Resource version conflict |
+| `TENANT_NOT_FOUND` | Tenant not found |
+| `SERVICE_UNAVAILABLE` | Service temporarily unavailable |
+| `RATE_LIMIT_EXCEEDED` | API rate limit exceeded |
+| `INVALID_REGULATION` | Regulation validation failed |
+| `ATTESTATION_EXPIRED` | Attestation certificate expired |
 
-## Error Response Format
+## 12. Webhook Integration
 
+### 12.1 Webhook Registration
+
+#### Register Webhook
+
+```
+POST /api/v1/webhooks
+```
+
+Request:
 ```json
 {
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error message",
-    "details": {
-      "field": "field_with_error",
-      "reason": "Specific error information"
-    },
-    "requestId": "uuid-for-tracking"
-  }
+  "url": "string",
+  "events": ["REGULATION_UPDATED", "VALIDATION_COMPLETED"],
+  "description": "string",
+  "secret": "string",
+  "isActive": true
 }
 ```
 
-## Endpoints
+Response: Webhook registration confirmation
 
-### Authentication
+### 12.2 Webhook Events
 
-#### POST /auth/login
+| Event | Description |
+|-------|-------------|
+| `REGULATION_CREATED` | New regulation created |
+| `REGULATION_UPDATED` | Regulation updated |
+| `VALIDATION_COMPLETED` | Validation process completed |
+| `ATTESTATION_ISSUED` | New attestation certificate issued |
+| `ATTESTATION_REVOKED` | Attestation certificate revoked |
+| `COMPLIANCE_STATUS_CHANGED` | Compliance status changed |
 
-Authenticate with username and password.
+## 13. Rate Limiting
 
-**Request:**
+- Default rate limits are enforced on all API endpoints
+- Rate limits vary by endpoint sensitivity and resource requirements
+- Rate limit information is included in response headers
+- Rate limit exceeded errors return status code 429
 
-```json
-{
-  "username": "user@example.com",
-  "password": "password123"
-}
-```
+## 14. API Documentation Access
 
-**Response:**
-
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": 3600,
-  "tokenType": "Bearer",
-  "userId": "user-uuid"
-}
-```
-
-#### POST /auth/refresh
-
-Refresh access token using refresh token.
-
-**Request:**
-
-```json
-{
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-**Response:**
-
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": 3600,
-  "tokenType": "Bearer"
-}
-```
-
-#### POST /auth/logout
-
-Log out and invalidate tokens.
-
-**Request:**
-
-```json
-{
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "message": "Logged out successfully"
-}
-```
-
-### Regulations
-
-#### GET /regulations
-
-List all regulations with optional filtering.
-
-**Query Parameters:**
-
-- `page`: Page number (default: 1)
-- `limit`: Items per page (default: 20, max: 100)
-- `category`: Filter by category
-- `jurisdiction`: Filter by jurisdiction
-- `query`: Search term for title and content
-- `tags`: Comma-separated list of tags
-- `active`: Boolean to filter by active status
-
-**Response:**
-
-```json
-{
-  "data": [
-    {
-      "regulationId": "uuid",
-      "title": "Regulation Title",
-      "citation": "Official Citation",
-      "jurisdiction": "Federal",
-      "authority": "Department of Education",
-      "category": "Academic Standards",
-      "effectiveDate": "2023-01-01",
-      "isActive": true,
-      "tags": ["academics", "standards"],
-      "currentVersion": "1.2.3",
-      "lastUpdated": "2023-03-15T14:30:00Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 135,
-    "pages": 7
-  }
-}
-```
-
-#### GET /regulations/{regulationId}
-
-Get detailed information about a specific regulation.
-
-**Response:**
-
-```json
-{
-  "regulationId": "uuid",
-  "title": "Regulation Title",
-  "citation": "Official Citation",
-  "jurisdiction": "Federal",
-  "authority": "Department of Education",
-  "category": "Academic Standards",
-  "effectiveDate": "2023-01-01",
-  "isActive": true,
-  "tags": ["academics", "standards"],
-  "currentVersion": "1.2.3",
-  "versions": [
-    {
-      "versionNumber": "1.2.3",
-      "effectiveDate": "2023-01-01",
-      "isCurrent": true
-    },
-    {
-      "versionNumber": "1.2.2",
-      "effectiveDate": "2022-07-15",
-      "isCurrent": false
-    }
-  ],
-  "metadata": {
-    "additionalProperty": "value"
-  },
-  "createdAt": "2022-12-01T10:00:00Z",
-  "updatedAt": "2023-03-15T14:30:00Z"
-}
-```
-
-#### GET /regulations/{regulationId}/versions/{versionNumber}
-
-Get a specific version of a regulation with full content.
-
-**Response:**
-
-```json
-{
-  "regulationId": "uuid",
-  "versionId": "uuid",
-  "versionNumber": "1.2.3",
-  "content": "Full text content of the regulation...",
-  "contentFormat": "markdown",
-  "contentHash": "sha256-hash",
-  "changeSummary": "Summary of changes from previous version",
-  "changeType": "minor",
-  "effectiveDate": "2023-01-01",
-  "supersededDate": null,
-  "isCurrent": true,
-  "publishedAt": "2022-12-15T09:00:00Z",
-  "approvalStatus": "published",
-  "sourceUrl": "https://example.gov/regulation-source",
-  "structure": [
-    {
-      "sectionType": "chapter",
-      "sectionNumber": "1",
-      "title": "General Provisions",
-      "content": "Chapter content...",
-      "children": [
-        {
-          "sectionType": "article",
-          "sectionNumber": "1.1",
-          "title": "Purpose",
-          "content": "Article content..."
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### GET /regulations/{regulationId}/diff
-
-Get differences between two versions of a regulation.
-
-**Query Parameters:**
-
-- `from`: Source version number (required)
-- `to`: Target version number (required)
-- `format`: Diff format (options: "inline", "side-by-side", "unified", default: "unified")
-
-**Response:**
-
-```json
-{
-  "regulationId": "uuid",
-  "fromVersion": "1.2.2",
-  "toVersion": "1.2.3",
-  "changes": [
-    {
-      "type": "addition",
-      "sectionNumber": "2.3",
-      "content": {
-        "previous": null,
-        "current": "New section content..."
-      }
-    },
-    {
-      "type": "modification",
-      "sectionNumber": "1.1",
-      "content": {
-        "previous": "Original content...",
-        "current": "Modified content..."
-      }
-    }
-  ],
-  "changeSummary": "Human-readable summary of changes",
-  "changeType": "minor",
-  "diffFormat": "unified"
-}
-```
-
-### Validation
-
-#### POST /validate
-
-Submit a regulation for validation.
-
-**Request:**
-
-```json
-{
-  "regulationId": "uuid",
-  "regulationVersion": "1.2.3",
-  "regulationContent": {
-    "text": "Full text of regulation as implemented in frontend",
-    "metadata": {
-      "source": "Citation source",
-      "effectiveDate": "2023-01-01",
-      "jurisdiction": "Federal",
-      "category": "Academic Standards",
-      "tags": ["tag1", "tag2"]
-    }
-  },
-  "validationLevel": 1,
-  "options": {
-    "requireCertainty": 4,
-    "includeEvidence": true,
-    "checkVersionChanges": true
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "requestId": "uuid-request-identifier",
-  "timestamp": "2023-04-02T20:31:00Z",
-  "status": "success",
-  "data": {
-    "regulationId": "uuid",
-    "regulationVersion": "1.2.3",
-    "authorityVersion": "1.3.0",
-    "validationResult": {
-      "isValid": true,
-      "certaintyLevel": 5,
-      "validationTimestamp": "2023-04-02T20:31:00Z",
-      "validationLevel": 1,
-      "evidence": {
-        "textMatch": 98.7,
-        "checksum": "sha256-hash-value",
-        "matchedSections": [
-          {
-            "clientSection": "Section 1.a",
-            "authoritySection": "Section 1.a",
-            "matchLevel": 100
-          }
-        ]
-      }
-    },
-    "versionStatus": {
-      "hasChanges": true,
-      "changesUrl": "/api/regulations/uuid/diff?from=1.2.3&to=1.3.0",
-      "changeDescription": "Human-readable description of changes",
-      "changeSeverity": "minor",
-      "effectiveDate": "2023-05-01"
-    },
-    "attestationCertificate": {
-      "certificateId": "cert-identifier",
-      "issuedAt": "2023-04-02T20:31:00Z",
-      "expiresAt": "2023-07-02T20:31:00Z",
-      "validatedBy": "validator-identifier",
-      "certificateUrl": "/api/certificates/cert-identifier"
-    }
-  }
-}
-```
-
-#### POST /validate/batch
-
-Submit multiple regulations for validation in a single request.
-
-**Request:**
-
-```json
-{
-  "regulations": [
-    {
-      "regulationId": "uuid-1",
-      "regulationVersion": "1.2.3",
-      "regulationContent": { /* regulation content */ },
-      "validationLevel": 1
-    },
-    {
-      "regulationId": "uuid-2",
-      "regulationVersion": "1.0.1",
-      "regulationContent": { /* regulation content */ },
-      "validationLevel": 1
-    }
-  ],
-  "options": {
-    "requireCertainty": 4,
-    "includeEvidence": true,
-    "checkVersionChanges": true
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "requestId": "uuid-request-identifier",
-  "timestamp": "2023-04-02T20:31:00Z",
-  "status": "success",
-  "data": [
-    {
-      "regulationId": "uuid-1",
-      /* validation result for first regulation */
-    },
-    {
-      "regulationId": "uuid-2",
-      /* validation result for second regulation */
-    }
-  ]
-}
-```
-
-### Version Management
-
-#### GET /versions/{regulationId}/check
-
-Check for updates to a regulation.
-
-**Query Parameters:**
-
-- `currentVersion`: Current version in the frontend (required)
-- `lastCheckedTimestamp`: Last time updates were checked (ISO 8601 format)
-
-**Response:**
-
-```json
-{
-  "regulationId": "uuid",
-  "clientVersion": "1.2.3",
-  "authorityVersion": "1.3.0",
-  "hasChanges": true,
-  "changeTimestamp": "2023-03-15T09:45:00Z",
-  "changes": [
-    {
-      "type": "addition",
-      "section": "Section 2.c",
-      "description": "Added new compliance requirement",
-      "severity": "major"
-    },
-    {
-      "type": "modification",
-      "section": "Section 5.a",
-      "description": "Changed reporting deadline",
-      "severity": "minor"
-    }
-  ],
-  "diffUrl": "/api/regulations/uuid/diff?from=1.2.3&to=1.3.0",
-  "effectiveDate": "2023-05-01",
-  "acceptanceRequired": true,
-  "acceptanceDeadline": "2023-04-30T23:59:59Z"
-}
-```
-
-#### POST /versions/{regulationId}/accept
-
-Record acceptance of a regulation version update.
-
-**Request:**
-
-```json
-{
-  "currentVersion": "1.2.3",
-  "acceptedVersion": "1.3.0",
-  "acceptedBy": "user-uuid",
-  "comments": "Optional user comments on acceptance"
-}
-```
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "acceptanceId": "uuid",
-  "regulationId": "uuid",
-  "fromVersion": "1.2.3",
-  "toVersion": "1.3.0",
-  "acceptedBy": "user-uuid",
-  "acceptedAt": "2023-04-02T15:30:00Z"
-}
-```
-
-### Certificates
-
-#### GET /certificates/{certificateId}
-
-Get details of an attestation certificate.
-
-**Response:**
-
-```json
-{
-  "certificateId": "uuid",
-  "validationId": "uuid",
-  "regulationId": "uuid",
-  "regulationVersion": "1.2.3",
-  "issuedAt": "2023-04-02T20:31:00Z",
-  "expiresAt": "2023-07-02T20:31:00Z",
-  "issuer": "EdSteward.ai Validation Authority",
-  "cryptographicSignature": "signature-data",
-  "revocationStatus": "active",
-  "metadata": {
-    "validationLevel": 1,
-    "certaintyLevel": 5
-  }
-}
-```
-
-#### GET /certificates
-
-List attestation certificates with optional filtering.
-
-**Query Parameters:**
-
-- `page`: Page number (default: 1)
-- `limit`: Items per page (default: 20, max: 100)
-- `regulationId`: Filter by regulation
-- `status`: Filter by status (active, revoked, expired)
-
-**Response:**
-
-```json
-{
-  "data": [
-    {
-      "certificateId": "uuid",
-      "regulationId": "uuid",
-      "regulationVersion": "1.2.3",
-      "issuedAt": "2023-04-02T20:31:00Z",
-      "expiresAt": "2023-07-02T20:31:00Z",
-      "revocationStatus": "active"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 42,
-    "pages": 3
-  }
-}
-```
-
-#### POST /certificates/{certificateId}/verify
-
-Verify the authenticity of an attestation certificate.
-
-**Request:**
-
-```json
-{
-  "certificateId": "uuid",
-  "cryptographicSignature": "signature-to-verify"
-}
-```
-
-**Response:**
-
-```json
-{
-  "isValid": true,
-  "verificationTimestamp": "2023-04-02T21:00:00Z",
-  "certificateId": "uuid",
-  "certificateStatus": "active",
-  "verificationDetails": {
-    "signatureValid": true,
-    "notExpired": true,
-    "notRevoked": true
-  }
-}
-```
-
-### Audit Logs
-
-#### GET /audit-logs
-
-List audit logs with optional filtering.
-
-**Query Parameters:**
-
-- `page`: Page number (default: 1)
-- `limit`: Items per page (default: 20, max: 100)
-- `entityType`: Filter by entity type (regulation, version, certificate)
-- `entityId`: Filter by specific entity
-- `eventType`: Filter by event type
-- `startDate`: Start date for date range (ISO 8601)
-- `endDate`: End date for date range (ISO 8601)
-- `userId`: Filter by user who performed action
-
-**Response:**
-
-```json
-{
-  "data": [
-    {
-      "auditId": "uuid",
-      "eventType": "validation.performed",
-      "entityType": "regulation",
-      "entityId": "uuid",
-      "userId": "user-uuid",
-      "action": "validate",
-      "timestamp": "2023-04-02T15:30:00Z",
-      "summary": "Regulation validated with level 1"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 135,
-    "pages": 7
-  }
-}
-```
-
-#### GET /audit-logs/{auditId}
-
-Get detailed information about a specific audit log entry.
-
-**Response:**
-
-```json
-{
-  "auditId": "uuid",
-  "eventType": "validation.performed",
-  "entityType": "regulation",
-  "entityId": "uuid",
-  "userId": "user-uuid",
-  "clientId": "frontend-id",
-  "ipAddress": "192.168.1.1",
-  "action": "validate",
-  "timestamp": "2023-04-02T15:30:00Z",
-  "previousState": {
-    /* State before action */
-  },
-  "newState": {
-    /* State after action */
-  },
-  "metadata": {
-    "validationLevel": 1,
-    "certaintyLevel": 5,
-    "requestId": "original-request-uuid"
-  }
-}
-```
-
-### Webhooks
-
-#### POST /webhooks
-
-Register a webhook endpoint for notifications.
-
-**Request:**
-
-```json
-{
-  "url": "https://example.com/webhook",
-  "secret": "shared-secret-for-signature-verification",
-  "events": ["regulation.updated", "validation.performed"],
-  "description": "Frontend notification endpoint"
-}
-```
-
-**Response:**
-
-```json
-{
-  "webhookId": "uuid",
-  "url": "https://example.com/webhook",
-  "events": ["regulation.updated", "validation.performed"],
-  "description": "Frontend notification endpoint",
-  "status": "active",
-  "createdAt": "2023-04-02T15:30:00Z"
-}
-```
-
-#### GET /webhooks
-
-List registered webhooks.
-
-**Response:**
-
-```json
-{
-  "data": [
-    {
-      "webhookId": "uuid",
-      "url": "https://example.com/webhook",
-      "events": ["regulation.updated", "validation.performed"],
-      "description": "Frontend notification endpoint",
-      "status": "active",
-      "lastTriggered": "2023-04-01T10:15:00Z"
-    }
-  ]
-}
-```
-
-## Webhook Notifications
-
-When events occur that match a webhook subscription, the system will POST to the registered URL with the following format:
-
-```json
-{
-  "eventId": "uuid",
-  "timestamp": "2023-04-02T15:30:00Z",
-  "eventType": "regulation.updated",
-  "signature": "HMAC-SHA256-signature",
-  "data": {
-    /* Event-specific payload */
-  }
-}
-```
-
-The signature is generated using HMAC-SHA256 with the registered webhook secret.
-
-### Webhook Event Types
-
-| Event Type | Description | Payload |
-|------------|-------------|---------|
-| regulation.created | New regulation created | Regulation details |
-| regulation.updated | Regulation updated | Regulation details, version info |
-| version.created | New regulation version created | Version details |
-| validation.performed | Validation operation completed | Validation result |
-| certificate.issued | New attestation certificate issued | Certificate details |
-| certificate.revoked | Certificate revoked | Certificate details, revocation reason |
-| version.accepted | Version change accepted | Acceptance details |
-
-## CORS Configuration
-
-The API supports CORS for specified origins. For the Replit frontend, the following headers are included in responses:
-
-```
-Access-Control-Allow-Origin: https://edsteward-frontend.replit.app
-Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
-Access-Control-Allow-Headers: Authorization, Content-Type
-Access-Control-Max-Age: 86400
-```
-
-## Pagination
-
-List endpoints support pagination via the `page` and `limit` query parameters. Responses include a pagination object with the following fields:
-
-- `page`: Current page number
-- `limit`: Items per page
-- `total`: Total number of items
-- `pages`: Total number of pages
-
-## Request IDs
-
-All API requests are assigned a unique request ID returned in the response headers:
-
-```
-X-Request-ID: uuid-request-identifier
-```
-
-This ID should be used for tracking and troubleshooting.
-
-## Caching
-
-Certain endpoints support caching:
-
-- GET /regulations - Cache for 5 minutes
-- GET /regulations/{regulationId} - Cache for 5 minutes
-- GET /regulations/{regulationId}/versions/{versionNumber} - Cache for 1 hour
-
-Cache control headers are included in responses:
-
-```
-Cache-Control: max-age=300
-ETag: "etag-identifier"
-```
-
-## Client Libraries
-
-EdSteward.ai provides client libraries for easy integration:
-
-- JavaScript/TypeScript: `@edsteward/api-client`
-- Python: `edsteward-api-client`
-
-## API Status
-
-The API status can be checked at:
-
-```
-GET /status
-```
-
-**Response:**
-
-```json
-{
-  "status": "operational",
-  "version": "1.0.0",
-  "timestamp": "2023-04-02T20:31:00Z",
-  "components": {
-    "api": "operational",
-    "database": "operational",
-    "validation": "operational"
-  }
-}
-```
+Interactive API documentation is available at `/docs` when running in development mode.
